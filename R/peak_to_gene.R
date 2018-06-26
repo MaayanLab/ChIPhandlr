@@ -124,7 +124,7 @@ linearPeakScore = function(bed, outfile, window = 50000){
 
   results = plyr::dlply(bed,plyr::.(TF),function(TF){
 
-    chr_scores = return(plyr::ddply(TF,plyr::.(chr),function(chr){
+    chr_scores = plyr::ddply(TF,plyr::.(chr),function(chr){
       chr_annot = annot[annot$chrom == unique(chr$chr),]
       scores = sapply(chr_annot$TSS,function(tss){
         diff = abs(tss-chr$peak_start)
@@ -132,7 +132,7 @@ linearPeakScore = function(bed, outfile, window = 50000){
         scores = 1-diff/window
         return(sum(scores))})
       return(data.frame(gene = chr_annot$hgnc_id, score = scores))
-    }))
+    })
 
     chr_scores$TF = unique(TF$TF)
     write.table(chr_scores,outfile,append = T,
