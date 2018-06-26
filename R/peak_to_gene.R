@@ -6,7 +6,7 @@ closestPeak = function(bed, outfile){
   file.remove(outfile)
 
   annot_bed = plyr::ddply(bed,plyr::.(chr),function(chr){
-    annot = ucsc[ucsc$chrom == unique(chr$chr),]
+    annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr$chr),]
     closest_idx = sapply(annot$TSS,function(x){
       return(which.min(abs(chr$peak_start-x)))
     })
@@ -39,8 +39,8 @@ closestTSS = function(bed, outfile){
   file.remove(outfile)
 
   annot_bed = plyr::ddply(bed,plyr::.(chr),function(chr){
-    annot = ucsc[ucsc$chrom == unique(chr$chr),]
-    closest_idx = sapply(bed$peak_start,function(x){
+    annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr$chr),]
+    closest_idx = sapply(chr$peak_start,function(x){
       return(which.min(abs(annot$TSS-x)))
     })
 
@@ -65,7 +65,7 @@ fixedWindow = function(bed, outfile, window = c(-1000,1000)){
   file.remove(outfile)
 
   annot_ucsc = plyr::ddply(bed,plyr::.(chr),function(chr){
-    annot = ucsc[ucsc$chrom == unique(chr$chr),]
+    annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr$chr),]
 
     minus_strand = annot[annot$strand == "-",]
     plus_strand = annot[annot$strand == "+",]
@@ -101,6 +101,26 @@ fixedWindow = function(bed, outfile, window = c(-1000,1000)){
       quote = F, col.names = F, row.names = F, sep = "\t")
     return("written")
   })
+}
+
+#linear decay 1->0
+linearPeakScore = function(bed, outfile, window = c(-50000,50000)){
+  plyr::dlply(bed,plyr::.(TF),function(TF){
+    plyr::ddply(TF,plyr::.(chr),function(chr){
+      annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr$chr),]
+
+      minus_strand = annot[annot$strand == "-",]
+      plus_strand = annot[annot$strand == "+",]
+
+
+    })
+  })
+
+}
+
+#exponential decay 1->0
+exponentialPeakScore = function(bed, outfile, window = c(-100000,100000)){
+
 }
 
 
