@@ -83,7 +83,7 @@ fixedWindow = function(bed, outfile, window = c(-1000,1000)){
       paste(unique(plus_strand[x,"hgnc_id"]),collapse = ",")})),
       unlist(lapply(idx_minus,function(x){
         paste(unique(minus_strand[x,"hgnc_id"]),collapse = ",")
-    })),sep = ",")
+      })),sep = ",")
 
     transcript_ids =  paste(unlist(lapply(idx_plus,function(x){
       paste(unique(plus_strand[x,"ensembl_transcriptID"]),collapse = ",")})),
@@ -104,19 +104,46 @@ fixedWindow = function(bed, outfile, window = c(-1000,1000)){
 }
 
 #linear decay 1->0
-linearPeakScore = function(bed, outfile, window = c(-50000,50000)){
-  plyr::dlply(bed,plyr::.(TF),function(TF){
-    plyr::ddply(TF,plyr::.(chr),function(chr){
-      annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr$chr),]
+linearPeakScore = function(bed, outfile, window = 50000){
 
-      minus_strand = annot[annot$strand == "-",]
-      plus_strand = annot[annot$strand == "+",]
+  file.remove(outfile)
+
+  annot = ChIPhandlr::ucsc
+  annot = annot[annot$hgnc_id %in% genesetr::hgnc_dict_2018$approved,]
+  minus_strand = annot[annot$strand == "-",]
+  plus_strand = annot[annot$strand == "+",]
+
+  #remove all but most upstream TSS for each gene
+  minus_strand = minus_strand[order(minus_strand$TSS,decreasing = T),]
+  plus_strand = plus_strand[order(plus_strand$TSS,decreasing = F),]
+
+  minus_strand = minus_strand[!duplicated(minus_strand$hgnc_id),]
+  plus_strand = plus_strand[!duplicated(plus_strand$hgnc_id),]
+  annot = rbind(minus_strand, plus_strand)
 
 
-    })
+  results = plyr::dlply(bed,plyr::.(TF),function(TF){
+
+    chr_scores = return(plyr::ddply(TF,plyr::.(chr),function(chr){
+      chr_annot = annot[annot$chrom == unique(chr$chr),]
+      scores = sapply(chr_annot$TSS,function(tss){
+        diff = abs(tss-chr$peak_start)
+        diff = diff[diff<window]
+        scores = 1-diff/window
+        return(sum(scores))})
+      return(data.frame(gene = chr_annot$hgnc_id, score = scores))
+    }))
+
+    chr_scores$TF = unique(TF$TF)
+    write.table(chr_scores,outfile,append = T,
+      quote = F, col.names = F, row.names = F, sep = "\t")
+    return("written")
+
   })
-
 }
+
+
+
 
 #exponential decay 1->0
 exponentialPeakScore = function(bed, outfile, window = c(-100000,100000)){
