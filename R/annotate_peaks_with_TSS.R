@@ -4,11 +4,11 @@ closestTSS = function(bed, outfile){
 
   annot_bed = plyr::ddply(bed,plyr::.(chr),function(chr){
     annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr$chr),]
-    closest_idx = sapply(chr$peak_start,function(x){
+    closest_idx = sapply(chr$peak_start, function(x){
       return(which.min(abs(annot$TSS-x)))
     })
 
-    annot = annot[closest_idx,]
+    annot = annot[closest_idx, ]
     chr$target = annot$hgnc_id
     chr$target_transcript = annot$ensembl_transcriptID
 
