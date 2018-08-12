@@ -7,7 +7,7 @@ closestPeak = function(bed_list, peak_col, chr_col = "chr", exp_col, dir = "both
 
   #slice bed file by chromosome
   annot_TSS = plyr::ddply(bed,chr_col,function(chr){
-    print(unique(chr$chr))
+
 
     #subset TSS data frame by chromosome
     annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr[,chr_col]),]
@@ -87,41 +87,53 @@ fixedWindow = function(bed_list, peak_col, chr_col = "chr", exp_col, window = c(
 
 
   annot_TSS = plyr::ddply(bed, chr_col, function(chr){
-    annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr$chr), ]
+
+    annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr[chr_col,]), ]
 
     minus_strand = annot[annot$strand == "-",]
     plus_strand = annot[annot$strand == "+",]
 
-    idx_plus = sapply(chr$peak_start,function(x){
-      return(which(x > abs(plus_strand$TSS + window[1]) &
-          x < abs(plus_strand$TSS + window[2])))
-    })
-    idx_minus = sapply(chr$peak_start,function(x){
-      return(which(x < abs(minus_strand$TSS - window[1]) &
-          x > abs(minus_strand$TSS - window[2])))
+    idx_plus = lapply(annot[,"TSS"], function(tss){
+      return(which(window[1] <= (chr[,"peak_col"] - tss) &
+          window[2] >= (chr[,"peak_col"] - tss)))
     })
 
-    hgnc_ids =  paste(unlist(lapply(idx_plus,function(x){
-      paste(unique(plus_strand[x,"hgnc_id"]),collapse = ",")})),
-      unlist(lapply(idx_minus,function(x){
-        paste(unique(minus_strand[x,"hgnc_id"]),collapse = ",")
-      })),sep = ",")
+    idx_minus = lapply(annot[,"TSS"], function(tss){
+      return(which(window[1] <= (tss - chr[,"peak_col"]) &
+          window[2] >= (tss - chr[,"peak_col"])))
+    })
 
-    transcript_ids =  paste(unlist(lapply(idx_plus,function(x){
-      paste(unique(plus_strand[x,"ensembl_transcriptID"]),collapse = ",")})),
-      unlist(lapply(idx_minus,function(x){
-        paste(unique(minus_strand[x,"ensembl_transcriptID"]),collapse = ",")
-      })),sep = ",")
+    # idx_plus = sapply(chr[,peak_col],function(x){
+    #   return(which(x > abs(plus_strand$TSS + window[1]) &
+    #       x < abs(plus_strand$TSS + window[2])))
+    # })
+    #
+    # idx_minus = sapply(chr[,peak_col],function(x){
+    #   return(which(x < abs(minus_strand$TSS - window[1]) &
+    #       x > abs(minus_strand$TSS - window[2])))
+    # })
 
-    hgnc_ids = gsub("^,*|,*$","",hgnc_ids)
+    # hgnc_ids =  paste(unlist(lapply(idx_plus,function(x){
+    #   paste(unique(plus_strand[x,"hgnc_id"]),collapse = ",")})),
+    #   unlist(lapply(idx_minus,function(x){
+    #     paste(unique(minus_strand[x,"hgnc_id"]),collapse = ",")
+    #   })),sep = ",")
 
-    transcript_ids = gsub("^,*|,*$","",transcript_ids)
+    # transcript_ids =  paste(unlist(lapply(idx_plus,function(x){
+    #   paste(unique(plus_strand[x,"ensembl_transcriptID"]),collapse = ",")})),
+    #   unlist(lapply(idx_minus,function(x){
+    #     paste(unique(minus_strand[x,"ensembl_transcriptID"]),collapse = ",")
+    #   })),sep = ",")
+    #
+    # hgnc_ids = gsub("^,*|,*$","",hgnc_ids)
+    #
+    # transcript_ids = gsub("^,*|,*$","",transcript_ids)
 
-    chr$target_hgnc = hgnc_ids
-    chr$target_tx = transcript_ids
-    write.table(chr,outfile,append = T,
-      quote = F, col.names = F, row.names = F, sep = "\t")
-    return("written")
+    # chr$target_hgnc = hgnc_ids
+    # chr$target_tx = transcript_ids
+    # write.table(chr,outfile,append = T,
+    #   quote = F, col.names = F, row.names = F, sep = "\t")
+    # return("written")
   })
 }
 
@@ -129,32 +141,68 @@ fixedWindow = function(bed_list, peak_col, chr_col = "chr", exp_col, window = c(
 #returns annotated TSS file
 #annotates all transcription start sites with score
 #can accomodate one bed in data frame format
+peakScoreDist = function(bed_list, score_col, peak_col, chr_col = "chr", window = 20000, decay = "linear", b = NULL){
 
-linearPeakScore = function(bed_list, score_col, peak_col, chr_col = "chr", window = 20000, decay = "linear", b = NULL){
+  #auxiliary function to restrict base diag
+  diag_mat = function(x){
+    if(length(x)>1){
+      return(diag(x))
+    }else{
+      return(x)
+    }
+  }
 
+  #internal package annotations (at this point, only hg38 available)
   annot = ChIPhandlr::ucsc
 
-  scored_TSSs = plyr::ddply(bed,plyr::.(chr),function(chr){
 
+  #slice bed into chromosomes
+  return(plyr::ddply(bed,plyr::.(chr),function(chr){
+
+
+    #subset ucsc annotations for chromosome
     chr_annot = annot[annot$chrom == unique(chr[,chr_col]),]
+
+    #compute distance matrix between all peak locations on
+    #on chromosome and all TSSs on chromosome
     diff = abs(outer(chr_annot$TSS,chr[,peak_col],'-'))
 
+    #scoring function decays linearly with distance from TSS
     if(decay == "linear"){
-      scores = (1-diff/window) %*% diag(chr[,score_col])
+      #multiple bed peak scores by distance to TSS where scaling
+      #coefficient is 1 when there is 0 distance between the peak
+      #and the TSS and 0 when the distance between the peak and
+      #the TSS reaches the edge of the TSS window under consideration
+      #for speed uses matrix algebra
+
+      scores = (1-diff/window) %*% diag_mat(chr[,score_col])
+
+      #negative scores mean the peak is outside of the desired
+      #TSS genomic window; set these scores to 0
       scores[scores<0] = 0
+
+      #scoring function decays exponentially with distance from TSS
     }else if(decay == "exp"){
-      scores = (exp(-diff)) %*% diag(chr[,score_col])
+      error("Exponential decay not yet available. Please use 'linear'")
 
     }else{
       error("Argument decay must have values 'linear' or 'exp'.")
     }
 
+    #return data frame with all TSSs and associated score
+    #corresponding to sum of scaled
+    #peak intensities within designated genomic window around
+    #each TSS
     return(data.frame(ensembl = chr_annot$ensembl_transcriptID,
       tss = chr_annot$TSS,
       strand = chr_annot$strand,
       gene = chr_annot$hgnc_id,
+      #sum the scaled peak scores within the genomic window of the TSS
       score = rowSums(scores),
       stringsAsFactors = F))
-  })
-  return(scored_TSSs)
-}
+  })) #end aggregation of dataframes for all chromosomes
+      #into one data frame containing
+      #all annotated TSSs
+
+}#end function peakScoreDist()
+
