@@ -1,3 +1,6 @@
+
+#' @export
+
 closestTSS = function(bed, outfile){
 
   file.remove(outfile)

@@ -1,3 +1,5 @@
+#' @export
+
 #returns MACS xls object
 loadMACSxls = function(filename){
   df = read.table(filename, sep = "\t", header = T,

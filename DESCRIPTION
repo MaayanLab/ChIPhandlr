@@ -9,4 +9,10 @@ Description: More about what it does (maybe more than one line)
 License: What license is it under?
 Encoding: UTF-8
 LazyData: true
-Imports: doMC
+Imports: 
+    doMC,
+    Rcpp
+LinkingTo: 
+    Rcpp,
+    RcppEigen
+RoxygenNote: 6.1.1
