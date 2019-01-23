@@ -10,28 +10,28 @@ NULL
 closestPeak = function(bed_list, peak_col, chr_col = "chr", exp_col, dir = "both"){
   #stack bed data frames
   bed = plyr::rbind.fill(bed_list)
+  annot = ChIPhandlr::ucsc
+  annot = annot[annot$hgnc_id %in% unique(genesetr::hgnc_dict),]
 
   #slice bed file by chromosome
   annot_TSS = plyr::ddply(bed,chr_col,function(chr){
 
 
     #subset TSS data frame by chromosome
-    annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr[,chr_col]),]
+    annot_chr = annot[annot$chrom == unique(chr[,chr_col]),]
 
     #determine bed index of closest peak
     if(dir == "both"){
-
-      closest_idx = sapply(annot$TSS,function(x){
+      closest_idx = sapply(annot_chr$TSS,function(x){
         return(which.min(abs(chr[,peak_col]-x)))})
 
       #annotate TSSs with closest peak
-      annot$peak_name = as.character(chr[closest_idx,exp_col])
-      annot$peak_loc = chr[closest_idx,peak_col]
+      annot_chr$peak_name = as.character(chr[closest_idx,exp_col])
+      annot_chr$peak_loc = chr[closest_idx,peak_col]
 
     }else{
-      plus_strand = annot[annot$strand == "+",]
-      minus_strand = annot[annot$strand == "-",]
-
+      plus_strand = annot_chr[annot_chr$strand == "+",]
+      minus_strand = annot_chr[annot_chr$strand == "-",]
       if(dir == "upstream"){
         closest_idx_plus = sapply(plus_strand$TSS,function(x){
           diff = x - chr[,peak_col]
@@ -61,26 +61,34 @@ closestPeak = function(bed_list, peak_col, chr_col = "chr", exp_col, dir = "both
           if(any(!is.na(diff))){
             return(which.min(diff))
           }else return(NA)})
+
+
+
+        #annotate TSSs with closest peak
+        annot_chr$peak_name = NA
+        annot_chr$peak_loc = NA
+
+        if(length(closest_idx_plus) == 0) closest_idx_plus = NA
+        if(length(closest_idx_minus) == 0) closest_idx_minus = NA
+
+        annot_chr[annot_chr$strand == "+",
+          "peak_name"] = as.character(chr[closest_idx_plus, exp_col])
+        annot_chr[annot_chr$strand == "+",
+          "peak_loc"] = chr[closest_idx_plus, peak_col]
+
+        annot_chr[annot_chr$strand == "-",
+          "peak_name"] = as.character(chr[closest_idx_minus, exp_col])
+        annot_chr[annot_chr$strand == "-",
+          "peak_loc"] = chr[closest_idx_minus, peak_col]
+
       }else{
         error("dir argument must be 'upstream', 'downstream' or 'both'")
       }
 
-      #annotate TSSs with closest peak
-      annot$peak_name = NA
-      annot$peak_loc = NA
-
-      if(length(closest_idx_plus) == 0) closest_idx_plus = NA
-      if(length(closest_idx_minus) == 0) closest_idx_minus = NA
-
-      annot[annot$strand == "+", "peak_name"] = as.character(chr[closest_idx_plus, exp_col])
-      annot[annot$strand == "+", "peak_loc"] = chr[closest_idx_plus, peak_col]
-
-      annot[annot$strand == "-", "peak_name"] = as.character(chr[closest_idx_minus, exp_col])
-      annot[annot$strand == "-", "peak_loc"] = chr[closest_idx_minus, peak_col]
-
     }
 
-    return(annot)})
+    return(annot_chr)
+    })
 
   return(annot_TSS)
 
@@ -90,24 +98,28 @@ closestPeak = function(bed_list, peak_col, chr_col = "chr", exp_col, dir = "both
 #returns TSSs annotated with all peaks that fall within the genomic window
 #' @export
 
-fixedWindow = function(bed, outfile, peak_col, chr_col = "chr", exp_col, window = c(-1000,1000)){
+fixedWindow = function(bed_list, outfile, peak_col, chr_col = "chr", exp_col, window = c(-1000,1000)){
+
   file.remove(outfile)
+  bed = plyr::rbind.fill(bed_list)
+
+  annot = ChIPhandlr::ucsc
+  annot = annot[annot$hgnc_id %in% unique(genesetr::hgnc_dict),]
+
   annot_TSS = plyr::ddply(bed, chr_col, function(chr){
 
-    annot = ChIPhandlr::ucsc[ChIPhandlr::ucsc$chrom == unique(chr[,..chr_col]), ]
+    annot_chr = annot[annot$chrom == unique(chr[,..chr_col]), ]
 
     #separate UCSC annotations into plus and minus strand data frames
-    minus_strand = annot[annot$strand == "-",]
-    plus_strand = annot[annot$strand == "+",]
+    minus_strand = annot_chr[annot_chr$strand == "-",]
+    plus_strand = annot_chr[annot_chr$strand == "+",]
 
     #generate a list with one entry per TSS. Each entry of the list contains the indices of
     #the peaks that fall within the window of that TSS.
-    ptm = proc.time()
     idx_plus = lapply(plus_strand[,"TSS"], function(tss){
       return(which(window[1] <= (chr[,..peak_col] - tss) &
           window[2] >= (chr[,..peak_col] - tss)))
     })
-    proc.time()-ptm
 
     #generate a list with one entry per TSS. Each entry of the list contains the indices of
     #the peaks that fall within the window of that TSS.
