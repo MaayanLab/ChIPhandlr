@@ -10,9 +10,5 @@ License: What license is it under?
 Encoding: UTF-8
 LazyData: true
 Imports: 
-    doMC,
-    Rcpp
-LinkingTo: 
-    Rcpp,
-    RcppEigen
+    doMC
 RoxygenNote: 6.1.1

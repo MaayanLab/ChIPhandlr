@@ -2,9 +2,7 @@
 #returns annotated TSSs where each TSS is annotated with its closest peak from among the bed list
 #can accomodate one bed or a list of beds in data frame format
 
-#' @useDynLib ChIPhandlr
-#' @importFrom Rcpp sourceCpp
-NULL
+
 #' @export
 
 closestPeak = function(bed_list, peak_col, chr_col = "chr", exp_col, dir = "both"){
