@@ -95,60 +95,63 @@ closestPeak = function(bed_list, peak_col, chr_col = "chr", exp_col, dir = "both
 #each TSS is assigned all peaks within some genomic window
 #returns TSSs annotated with all peaks that fall within the genomic window
 #' @export
+#' @import magrittr
 
-fixedWindow = function(bed_list, outfile, peak_col, chr_col = "chr", exp_col, window = c(-1000,1000)){
+fixedWindow = function(bed_list, peak_col, chr_col = "chr", exp_col, window = c(-1000,1000)){
 
-  file.remove(outfile)
+
   bed = plyr::rbind.fill(bed_list)
 
   annot = ChIPhandlr::ucsc
   annot = annot[annot$hgnc_id %in% unique(genesetr::hgnc_dict),]
 
-  annot_TSS = plyr::ddply(bed, chr_col, function(chr){
+  fixed_win = plyr::dlply(bed, chr_col, function(chr){
 
-    annot_chr = annot[annot$chrom == unique(chr[,..chr_col]), ]
+    annot_chr = annot[annot$chrom == unique(unlist(chr[,chr_col])), ]
 
     #separate UCSC annotations into plus and minus strand data frames
     minus_strand = annot_chr[annot_chr$strand == "-",]
     plus_strand = annot_chr[annot_chr$strand == "+",]
 
-    #generate a list with one entry per TSS. Each entry of the list contains the indices of
-    #the peaks that fall within the window of that TSS.
-    idx_plus = lapply(plus_strand[,"TSS"], function(tss){
-      return(which(window[1] <= (chr[,..peak_col] - tss) &
-          window[2] >= (chr[,..peak_col] - tss)))
+    #take only the first TSS for each gene symbol
+    minus_strand = minus_strand[order(-minus_strand$TSS),]
+    minus_strand = minus_strand[!duplicated(minus_strand$hgnc_id),]
+    plus_strand = plus_strand[order(plus_strand$TSS),]
+    plus_strand = plus_strand[!duplicated(plus_strand$hgnc_id),]
+
+
+    #separate by TF
+    tf_results = plyr::dlply(chr, "TF", function(tf){
+      plus_diff = outer(plus_strand$TSS,as.numeric(tf$peak_start),'-')
+      plus_diff_log = -plus_diff > window[1] & -plus_diff < window[2]
+      plus_targets = unique(plus_strand[rowSums(plus_diff_log) > 0,"hgnc_id"])
+
+      rm(plus_diff, plus_diff_log)
+
+      minus_diff = abs(outer(minus_strand$TSS,as.numeric(tf$peak_start),'-'))
+      minus_diff_log = minus_diff > window[1] & minus_diff < window[2]
+      minus_targets = unique(minus_strand[rowSums(minus_diff_log) > 0,"hgnc_id"])
+
+      return(unique(c(minus_targets,plus_targets)))
+
     })
 
-    #generate a list with one entry per TSS. Each entry of the list contains the indices of
-    #the peaks that fall within the window of that TSS.
-    idx_minus = lapply(minus_strand[1:100,"TSS"], function(tss){
-      return(which(window[1] <= (tss - chr[,..peak_col]) &
-          window[2] >= (tss - chr[,..peak_col])))
-    })
-
-    hgnc_ids =  paste(unlist(lapply(idx_plus,function(x){
-      paste(unique(plus_strand[x,"hgnc_id"]),collapse = ",")})),
-      unlist(lapply(idx_minus,function(x){
-        paste(unique(minus_strand[x,"hgnc_id"]),collapse = ",")
-      })),sep = ",")
-
-    transcript_ids =  paste(unlist(lapply(idx_plus,function(x){
-      paste(unique(plus_strand[x,"ensembl_transcriptID"]),collapse = ",")})),
-      unlist(lapply(idx_minus,function(x){
-        paste(unique(minus_strand[x,"ensembl_transcriptID"]),collapse = ",")
-      })),sep = ",")
-
-    hgnc_ids = gsub("^,*|,*$","",hgnc_ids)
-
-    transcript_ids = gsub("^,*|,*$","",transcript_ids)
-
-    chr$target_hgnc = hgnc_ids
-    chr$target_tx = transcript_ids
-
-    write.table(chr,outfile,append = T,
-      quote = F, col.names = F, row.names = F, sep = "\t")
-    return("written")
+   return(tf_results)
   })
+
+  #combine tf_results
+  all_tfs = unique(bed$TF)
+
+  results_gmt = lapply(all_tfs,function(tf){
+    return(lapply(fixed_win,function(chr_results){
+      if(tf %in% names(chr_results)){
+        return(chr_results[[tf]])
+      }
+    }) %>% unlist %>% as.character %>% unique)
+  })
+  names(results_gmt) = all_tfs
+  return(results_gmt)
+
 }
 
 #linear decay 1->0
@@ -188,6 +191,8 @@ peakScoreDist = function(bed, score_col, peak_col, chr_col = "chr", window = 200
       strand = chr_annot$strand,
       gene = chr_annot$hgnc_id,
       stringsAsFactors = F)
+
+    #further slice bed into TFs
 
 
     #compute distance matrix between all peak locations on

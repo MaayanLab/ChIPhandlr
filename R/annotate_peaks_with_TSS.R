@@ -9,7 +9,7 @@ closestTSS = function(bed, chr_col, peak_col, outfile){
 
   annot_bed = plyr::ddply(bed,chr_col,function(chr){
     annot_chr = annot[annot$chrom == unique(chr[,chr_col]),]
-    closest_idx = sapply(chr[,peak_col], function(x){
+    closest_idx = sapply(as.numeric(chr[,peak_col]), function(x){
       return(which.min(abs(annot$TSS-x)))
     })
 
